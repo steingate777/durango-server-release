@@ -1,15 +1,15 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ==============================================================================
-#  🦖 Durango: Wild Lands - 1-Click Termux Offline Server Installer
+#  🦖 Durango: Wild Lands - 1-Click Native Termux Offline Server (No PRoot)
 # ==============================================================================
 set -e
 
 echo ""
 echo "=================================================================="
-echo "    🦖 DURANGO: WILD LANDS - 1-CLICK TERMUX OFFLINE SERVER       "
+echo "    🦖 DURANGO: WILD LANDS - NATIVE TERMUX OFFLINE SERVER         "
 echo "=================================================================="
-echo " Setting up your private local server... Please wait a few moments."
-echo " (No server knowledge required - everything is automated!)"
+echo " Setting up native server (No PRoot, lightweight & fast)..."
+echo " (Zero server knowledge required - fully automated!)"
 echo "=================================================================="
 echo ""
 
@@ -19,43 +19,35 @@ if command -v termux-wake-lock >/dev/null 2>&1; then
     termux-wake-lock
 fi
 
-# 2. Install required Termux tools
-echo "[2/4] Preparing Termux utilities..."
+# 2. Install native utilities and glibc runner (No PRoot)
+echo "[2/4] Installing Termux glibc environment..."
 pkg update -y -o Dpkg::Options::="--force-confold" || true
-pkg install -y proot-distro curl tar || true
+pkg install -y curl tar || true
+pkg install -y glibc-repo || true
+pkg install -y glibc-runner || true
 
-# 3. Setup Ubuntu subsystem in Termux
-echo "[3/4] Checking Ubuntu subsystem..."
-if ! proot-distro list | grep -q "ubuntu.*installed"; then
-    echo "       Installing lightweight Ubuntu container..."
-    proot-distro install ubuntu
+# 3. Detect architecture and install .NET 9 runtime
+ARCH=$(uname -m)
+if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    DOTNET_ARCH="arm64"
+elif [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; then
+    DOTNET_ARCH="x64"
+else
+    DOTNET_ARCH="$ARCH"
 fi
 
-# 4. Install .NET 9 and Durango Server files
-echo "[4/4] Setting up Durango Server engine..."
-proot-distro login ubuntu -- bash -c '
-set -e
-export DEBIAN_FRONTEND=noninteractive
-apt update -y
-apt install -y ca-certificates curl zlib1g libicu-dev || apt install -y ca-certificates curl zlib1g libicu74 || apt install -y ca-certificates curl zlib1g libicu70 || true
-
-# Install .NET 9 Runtime
-if [ ! -f /root/.dotnet/dotnet ]; then
-    echo "       Installing .NET 9 runtime..."
+echo "[3/4] Installing .NET 9 runtime ($DOTNET_ARCH)..."
+if [ ! -f "$HOME/.dotnet/dotnet" ]; then
     curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
-    bash /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --install-dir /root/.dotnet
+    bash /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --architecture "$DOTNET_ARCH" --install-dir "$HOME/.dotnet"
 fi
 
-ln -sf /root/.dotnet/dotnet /usr/local/bin/dotnet
-
-# Download pre-built server package
-if [ ! -f /root/durango-server/DurangoServer.dll ]; then
-    echo "       Downloading Durango Server files..."
-    mkdir -p /root/durango-server
-    curl -sSL https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-offline-server.tar.gz | tar -xz -C /root/durango-server
-    chmod +x /root/durango-server/run.sh
+# 4. Download pre-built server package (7.5 MB)
+echo "[4/4] Setting up Durango Server engine..."
+if [ ! -f "$HOME/durango-server/DurangoServer.dll" ]; then
+    mkdir -p "$HOME/durango-server"
+    curl -sSL https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-offline-server.tar.gz | tar -xz -C "$HOME/durango-server"
 fi
-'
 
 # 5. Create instant shortcut 'durango' in Termux
 PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
@@ -64,9 +56,18 @@ cat << 'EOF' > "$PREFIX_DIR/bin/durango"
 if command -v termux-wake-lock >/dev/null 2>&1; then
     termux-wake-lock
 fi
+
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+export DOTNET_EnableWriteXorExecute=0
+
+RUNNER=""
+if command -v grun >/dev/null 2>&1; then
+    RUNNER="grun"
+fi
+
 clear
 echo "=================================================================="
-echo "    🦖 DURANGO: WILD LANDS - OFFLINE LOCAL SERVER                 "
+echo "    🦖 DURANGO: WILD LANDS - NATIVE OFFLINE SERVER (NO PROOT)     "
 echo "=================================================================="
 echo "  [✓] Server is STARTING on your phone!"
 echo "  [✓] Gateway: http://127.0.0.1:28190"
@@ -80,13 +81,15 @@ echo ""
 echo "  [!] To stop server later: Press Ctrl + C in Termux."
 echo "=================================================================="
 echo ""
-proot-distro login ubuntu -- /root/durango-server/run.sh
+
+cd "$HOME/durango-server"
+exec $RUNNER "$HOME/.dotnet/dotnet" DurangoServer.dll   --name "Durango Offline"   --gateway-port 28190   --game-port 28191   --data ./data   --terrains ./data/terrains   --public-host 127.0.0.1   --cluster-mode Offline   --max-players 1   --tps 10
 EOF
 chmod +x "$PREFIX_DIR/bin/durango"
 
 echo ""
 echo "=================================================================="
-echo "  🎉 SETUP COMPLETE!                                             "
+echo "  🎉 SETUP COMPLETE! (Zero PRoot, 100% Native)                   "
 echo "=================================================================="
 echo "  Starting your offline server now..."
 echo "  (Next time, just open Termux and type: durango)"
