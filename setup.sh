@@ -1,95 +1,66 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ==============================================================================
-#  🦖 Durango: Wild Lands - 1-Click Native Termux Offline Server (No PRoot)
+#  🦖 Durango: Wild Lands - 1-Click Native Offline Server (Complete Bundle)
 # ==============================================================================
 set -e
 
 echo ""
 echo "=================================================================="
-echo "    🦖 DURANGO: WILD LANDS - NATIVE TERMUX OFFLINE SERVER         "
+echo "    🦖 DURANGO: WILD LANDS - 1-CLICK NATIVE OFFLINE SERVER       "
 echo "=================================================================="
-echo " Setting up native server (No PRoot, lightweight & fast)..."
-echo " (Zero server knowledge required - fully automated!)"
+echo " Setting up native server... Please wait a few moments."
+echo " (Pre-packaged with .NET 9 engine - zero extra downloads!)"
 echo "=================================================================="
 echo ""
 
 # 1. Prevent Android from putting Termux to sleep
 if command -v termux-wake-lock >/dev/null 2>&1; then
-    echo "[1/4] Keeping Termux awake in background..."
+    echo "[1/3] Keeping Termux awake in background..."
     termux-wake-lock
 fi
 
-# 2. Fix any Termux library/OpenSSL mismatches and install utilities
-echo "[2/4] Syncing Termux packages and glibc environment..."
-apt update -y || true
-apt --fix-broken install -y -o Dpkg::Options::="--force-confold" || true
-apt full-upgrade -y -o Dpkg::Options::="--force-confold" || pkg upgrade -y || true
-pkg install -y openssl curl wget tar || true
-pkg install -y glibc-repo || true
-pkg install -y glibc-runner || true
+# 2. Install glibc-runner if not present
+echo "[2/3] Checking Termux glibc runner..."
+if ! command -v grun >/dev/null 2>&1; then
+    pkg update -y -o Dpkg::Options::="--force-confold" || true
+    pkg install -y glibc-repo || true
+    pkg install -y glibc-runner || true
+fi
 
-# Robust download helper
-download_url() {
-    URL="$1"
-    OUT="$2"
-    if curl -sSL -m 120 "$URL" -o "$OUT" 2>/dev/null; then
-        return 0
-    elif wget -q -O "$OUT" "$URL" 2>/dev/null; then
-        return 0
-    elif python3 -c "import urllib.request; urllib.request.urlretrieve('$URL', '$OUT')" 2>/dev/null; then
-        return 0
-    elif python -c "import urllib.request; urllib.request.urlretrieve('$URL', '$OUT')" 2>/dev/null; then
-        return 0
+# 3. Download the all-in-one pre-packaged server bundle (38 MB)
+echo "[3/3] Downloading complete Durango Server bundle (38 MB)..."
+mkdir -p "$HOME/durango-server"
+if [ ! -f "$HOME/durango-server/DurangoServer.dll" ]; then
+    URL="https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-server-arm64-complete.tar.gz"
+    DEST="/tmp/durango-server.tar.gz"
+    
+    if curl -sSL -k -m 180 "$URL" -o "$DEST" 2>/dev/null; then
+        echo "       Downloaded successfully via curl."
+    elif wget --no-check-certificate -q -O "$DEST" "$URL" 2>/dev/null; then
+        echo "       Downloaded successfully via wget."
+    elif python3 -c "import urllib.request, ssl; ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE; urllib.request.urlretrieve('$URL', '$DEST')" 2>/dev/null; then
+        echo "       Downloaded successfully via python."
     else
-        echo "Error: Unable to download $URL"
+        echo "Error: Could not download server archive. Check internet connection."
         exit 1
     fi
-}
 
-# 3. Detect architecture and install .NET 9 runtime
-ARCH=$(uname -m)
-if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    DOTNET_ARCH="arm64"
-elif [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; then
-    DOTNET_ARCH="x64"
-else
-    DOTNET_ARCH="$ARCH"
+    echo "       Extracting server files..."
+    tar -xzf "$DEST" -C "$HOME/durango-server"
+    rm -f "$DEST"
+    chmod +x "$HOME/durango-server/run.sh" "$HOME/durango-server/dotnet"
 fi
 
-echo "[3/4] Installing .NET 9 runtime ($DOTNET_ARCH)..."
-if [ ! -f "$HOME/.dotnet/dotnet" ]; then
-    download_url "https://dot.net/v1/dotnet-install.sh" "/tmp/dotnet-install.sh"
-    bash /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --architecture "$DOTNET_ARCH" --install-dir "$HOME/.dotnet"
-fi
-
-# 4. Download pre-built server package (7.5 MB)
-echo "[4/4] Setting up Durango Server engine..."
-if [ ! -f "$HOME/durango-server/DurangoServer.dll" ]; then
-    mkdir -p "$HOME/durango-server"
-    download_url "https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-offline-server.tar.gz" "/tmp/server.tar.gz"
-    tar -xzf "/tmp/server.tar.gz" -C "$HOME/durango-server"
-    rm -f "/tmp/server.tar.gz"
-fi
-
-# 5. Create instant shortcut 'durango' in Termux
+# 4. Create instant shortcut 'durango' in Termux
 PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
 cat << 'EOF' > "$PREFIX_DIR/bin/durango"
 #!/data/data/com.termux/files/usr/bin/bash
 if command -v termux-wake-lock >/dev/null 2>&1; then
     termux-wake-lock
 fi
-
-export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-export DOTNET_EnableWriteXorExecute=0
-
-RUNNER=""
-if command -v grun >/dev/null 2>&1; then
-    RUNNER="grun"
-fi
-
 clear
 echo "=================================================================="
-echo "    🦖 DURANGO: WILD LANDS - NATIVE OFFLINE SERVER (NO PROOT)     "
+echo "    🦖 DURANGO: WILD LANDS - OFFLINE LOCAL SERVER (NO PROOT)      "
 echo "=================================================================="
 echo "  [✓] Server is STARTING on your phone!"
 echo "  [✓] Gateway: http://127.0.0.1:28190"
@@ -103,15 +74,13 @@ echo ""
 echo "  [!] To stop server later: Press Ctrl + C in Termux."
 echo "=================================================================="
 echo ""
-
-cd "$HOME/durango-server"
-exec $RUNNER "$HOME/.dotnet/dotnet" DurangoServer.dll   --name "Durango Offline"   --gateway-port 28190   --game-port 28191   --data ./data   --terrains ./data/terrains   --public-host 127.0.0.1   --cluster-mode Offline   --max-players 1   --tps 10
+exec "$HOME/durango-server/run.sh"
 EOF
 chmod +x "$PREFIX_DIR/bin/durango"
 
 echo ""
 echo "=================================================================="
-echo "  🎉 SETUP COMPLETE! (Zero PRoot, 100% Native)                   "
+echo "  🎉 SETUP COMPLETE!                                             "
 echo "=================================================================="
 echo "  Starting your offline server now..."
 echo "  (Next time, just open Termux and type: durango)"
