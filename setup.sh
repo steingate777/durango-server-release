@@ -31,14 +31,14 @@ if ! command -v grun >/dev/null 2>&1; then
     pkg install -y glibc-runner || true
 fi
 
-# 3. Stream and extract pre-packaged server bundle (38 MB) using multi-mirror fallback
-echo "[3/3] Downloading & unpacking Durango Server bundle (38 MB)..."
+# 3. Stream and extract pre-packaged server bundle (38 MB) if missing
+echo "[3/3] Preparing Durango Server engine..."
 mkdir -p "$HOME/durango-server"
 
-if [ ! -f "$HOME/durango-server/DurangoServer.dll" ]; then
+if [ ! -f "$HOME/durango-server/DurangoServer.dll" ] || [ ! -f "$HOME/durango-server/dotnet" ]; then
     MIRRORS=(
+        "https://litter.catbox.moe/57qzx7.gz"
         "https://litter.catbox.moe/7r2cy4.gz"
-        "https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-server-arm64-complete.tar.gz"
     )
 
     SUCCESS=0
@@ -57,9 +57,42 @@ if [ ! -f "$HOME/durango-server/DurangoServer.dll" ]; then
         echo "Error: Download failed across all mirrors. Please check connection."
         exit 1
     fi
-
-    chmod +x "$HOME/durango-server/run.sh" "$HOME/durango-server/dotnet"
 fi
+
+# Always write the updated native runner into ~/durango-server/run.sh
+cat << 'EOF' > "$HOME/durango-server/run.sh"
+#!/data/data/com.termux/files/usr/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$DIR"
+
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+export DOTNET_EnableWriteXorExecute=0
+
+PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
+export LD_LIBRARY_PATH="$PREFIX_DIR/glibc/lib:$LD_LIBRARY_PATH"
+
+echo "=================================================="
+echo "  🦖 Starting Durango Offline Server..."
+echo "  Gateway: http://127.0.0.1:28190"
+echo "  Game TCP: 127.0.0.1:28191"
+echo "=================================================="
+
+# Method 1: Direct glibc dynamic linker with absolute path
+LD_SO=$(ls "$PREFIX_DIR/glibc/lib"/ld-linux* 2>/dev/null | head -n 1)
+if [ -x "$LD_SO" ]; then
+    exec "$LD_SO" --library-path "$PREFIX_DIR/glibc/lib" "$DIR/dotnet" "$DIR/DurangoServer.dll"       --name "Durango Offline"       --gateway-port 28190       --game-port 28191       --data "$DIR/data"       --terrains "$DIR/data/terrains"       --public-host 127.0.0.1       --cluster-mode Offline       --max-players 1       --tps 10
+fi
+
+# Method 2: grun -s shell
+if command -v grun >/dev/null 2>&1; then
+    exec grun -s ""$DIR/dotnet" "$DIR/DurangoServer.dll" --name "Durango Offline" --gateway-port 28190 --game-port 28191 --data "$DIR/data" --terrains "$DIR/data/terrains" --public-host 127.0.0.1 --cluster-mode Offline --max-players 1 --tps 10"
+fi
+
+# Method 3: direct execution
+exec "$DIR/dotnet" "$DIR/DurangoServer.dll"   --name "Durango Offline"   --gateway-port 28190   --game-port 28191   --data "$DIR/data"   --terrains "$DIR/data/terrains"   --public-host 127.0.0.1   --cluster-mode Offline   --max-players 1   --tps 10
+EOF
+
+chmod +x "$HOME/durango-server/run.sh" "$HOME/durango-server/dotnet"
 
 # 4. Create instant shortcut 'durango' in Termux
 PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
@@ -96,7 +129,7 @@ echo "  Starting your offline server now..."
 echo "  (Next time, just open Termux and type: durango)"
 echo "=================================================================="
 echo ""
-sleep 2
+sleep 1
 
 # Launch the server!
 "$PREFIX_DIR/bin/durango"
