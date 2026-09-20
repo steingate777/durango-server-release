@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ==============================================================================
-#  🦖 Durango: Wild Lands - 1-Click Native Offline Server (Complete Bundle)
+#  🦖 Durango: Wild Lands - 1-Click Native Offline Server (Multi-Mirror)
 # ==============================================================================
 set -e
 
@@ -22,26 +22,40 @@ fi
 # 2. Check and install Termux glibc runner (No PRoot)
 echo "[2/3] Checking Termux glibc runner..."
 if ! command -v grun >/dev/null 2>&1; then
+    PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
+    if [ -d "$PREFIX_DIR/etc/apt" ]; then
+        echo "deb https://packages.termux.dev/apt/termux-main stable main" > "$PREFIX_DIR/etc/apt/sources.list"
+    fi
     pkg update -y -o Dpkg::Options::="--force-confold" || true
     pkg install -y glibc-repo || true
     pkg install -y glibc-runner || true
 fi
 
-# 3. Stream and extract pre-packaged server bundle (38 MB) directly into $HOME
+# 3. Stream and extract pre-packaged server bundle (38 MB) using multi-mirror fallback
 echo "[3/3] Downloading & unpacking Durango Server bundle (38 MB)..."
 mkdir -p "$HOME/durango-server"
 
 if [ ! -f "$HOME/durango-server/DurangoServer.dll" ]; then
-    URL="https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-server-arm64-complete.tar.gz"
-    
-    # Direct stream into tar - zero temp files, 100% Android compatible
-    echo "       Streaming archive into $HOME/durango-server..."
-    if command -v curl >/dev/null 2>&1; then
-        curl -sSL -k -m 300 "$URL" | tar -xz -C "$HOME/durango-server"
-    elif command -v wget >/dev/null 2>&1; then
-        wget --no-check-certificate -qO- "$URL" | tar -xz -C "$HOME/durango-server"
-    elif command -v busybox >/dev/null 2>&1; then
-        busybox wget -qO- "$URL" | tar -xz -C "$HOME/durango-server"
+    MIRRORS=(
+        "https://litter.catbox.moe/7r2cy4.gz"
+        "https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-server-arm64-complete.tar.gz"
+    )
+
+    SUCCESS=0
+    for URL in "${MIRRORS[@]}"; do
+        echo "       Trying mirror: $URL"
+        if curl -sSL -k --http1.1 --retry 2 -m 300 "$URL" | tar -xz -C "$HOME/durango-server" 2>/dev/null; then
+            if [ -f "$HOME/durango-server/DurangoServer.dll" ]; then
+                SUCCESS=1
+                echo "       [✓] Unpacked successfully!"
+                break
+            fi
+        fi
+    done
+
+    if [ "$SUCCESS" -ne 1 ]; then
+        echo "Error: Download failed across all mirrors. Please check connection."
+        exit 1
     fi
 
     chmod +x "$HOME/durango-server/run.sh" "$HOME/durango-server/dotnet"
