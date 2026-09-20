@@ -19,12 +19,32 @@ if command -v termux-wake-lock >/dev/null 2>&1; then
     termux-wake-lock
 fi
 
-# 2. Install native utilities and glibc runner (No PRoot)
-echo "[2/4] Installing Termux glibc environment..."
-pkg update -y -o Dpkg::Options::="--force-confold" || true
-pkg install -y curl tar || true
+# 2. Fix any Termux library/OpenSSL mismatches and install utilities
+echo "[2/4] Syncing Termux packages and glibc environment..."
+apt update -y || true
+apt --fix-broken install -y -o Dpkg::Options::="--force-confold" || true
+apt full-upgrade -y -o Dpkg::Options::="--force-confold" || pkg upgrade -y || true
+pkg install -y openssl curl wget tar || true
 pkg install -y glibc-repo || true
 pkg install -y glibc-runner || true
+
+# Robust download helper
+download_url() {
+    URL="$1"
+    OUT="$2"
+    if curl -sSL -m 120 "$URL" -o "$OUT" 2>/dev/null; then
+        return 0
+    elif wget -q -O "$OUT" "$URL" 2>/dev/null; then
+        return 0
+    elif python3 -c "import urllib.request; urllib.request.urlretrieve('$URL', '$OUT')" 2>/dev/null; then
+        return 0
+    elif python -c "import urllib.request; urllib.request.urlretrieve('$URL', '$OUT')" 2>/dev/null; then
+        return 0
+    else
+        echo "Error: Unable to download $URL"
+        exit 1
+    fi
+}
 
 # 3. Detect architecture and install .NET 9 runtime
 ARCH=$(uname -m)
@@ -38,7 +58,7 @@ fi
 
 echo "[3/4] Installing .NET 9 runtime ($DOTNET_ARCH)..."
 if [ ! -f "$HOME/.dotnet/dotnet" ]; then
-    curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+    download_url "https://dot.net/v1/dotnet-install.sh" "/tmp/dotnet-install.sh"
     bash /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --architecture "$DOTNET_ARCH" --install-dir "$HOME/.dotnet"
 fi
 
@@ -46,7 +66,9 @@ fi
 echo "[4/4] Setting up Durango Server engine..."
 if [ ! -f "$HOME/durango-server/DurangoServer.dll" ]; then
     mkdir -p "$HOME/durango-server"
-    curl -sSL https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-offline-server.tar.gz | tar -xz -C "$HOME/durango-server"
+    download_url "https://github.com/steingate777/durango-server-release/releases/download/v1.0.0/durango-offline-server.tar.gz" "/tmp/server.tar.gz"
+    tar -xzf "/tmp/server.tar.gz" -C "$HOME/durango-server"
+    rm -f "/tmp/server.tar.gz"
 fi
 
 # 5. Create instant shortcut 'durango' in Termux
