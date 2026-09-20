@@ -1,15 +1,18 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ==============================================================================
-#  🦖 Durango: Wild Lands - 1-Click Native Offline Server (Multi-Mirror)
+#  🦖 Durango: Wild Lands - 1-Click Native Offline Server (Clean Env)
 # ==============================================================================
 set -e
+
+# Crucial: Unset any polluted library paths so Termux tools work smoothly
+unset LD_LIBRARY_PATH
+unset LD_PRELOAD
 
 echo ""
 echo "=================================================================="
 echo "    🦖 DURANGO: WILD LANDS - 1-CLICK NATIVE OFFLINE SERVER       "
 echo "=================================================================="
 echo " Setting up native server... Please wait a few moments."
-echo " (Pre-packaged with .NET 9 engine - zero extra downloads!)"
 echo "=================================================================="
 echo ""
 
@@ -59,17 +62,21 @@ if [ ! -f "$HOME/durango-server/DurangoServer.dll" ] || [ ! -f "$HOME/durango-se
     fi
 fi
 
-# Always write the updated native runner into ~/durango-server/run.sh
+# Write clean runner script with isolated glibc parameters (NEVER touches Termux LD_LIBRARY_PATH)
 cat << 'EOF' > "$HOME/durango-server/run.sh"
 #!/data/data/com.termux/files/usr/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
+unset LD_LIBRARY_PATH
+unset LD_PRELOAD
+
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 export DOTNET_EnableWriteXorExecute=0
 
 PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
-export LD_LIBRARY_PATH="$PREFIX_DIR/glibc/lib:$LD_LIBRARY_PATH"
+LD_SO="$PREFIX_DIR/glibc/lib/ld-linux-aarch64.so.1"
+GLIBC_LIB="$PREFIX_DIR/glibc/lib"
 
 echo "=================================================="
 echo "  🦖 Starting Durango Offline Server..."
@@ -77,19 +84,13 @@ echo "  Gateway: http://127.0.0.1:28190"
 echo "  Game TCP: 127.0.0.1:28191"
 echo "=================================================="
 
-# Method 1: Direct glibc dynamic linker with absolute path
-LD_SO=$(ls "$PREFIX_DIR/glibc/lib"/ld-linux* 2>/dev/null | head -n 1)
 if [ -x "$LD_SO" ]; then
-    exec "$LD_SO" --library-path "$PREFIX_DIR/glibc/lib" "$DIR/dotnet" "$DIR/DurangoServer.dll"       --name "Durango Offline"       --gateway-port 28190       --game-port 28191       --data "$DIR/data"       --terrains "$DIR/data/terrains"       --public-host 127.0.0.1       --cluster-mode Offline       --max-players 1       --tps 10
+    exec "$LD_SO" --library-path "$GLIBC_LIB" "$DIR/dotnet" "$DIR/DurangoServer.dll"       --name "Durango Offline"       --gateway-port 28190       --game-port 28191       --data "$DIR/data"       --terrains "$DIR/data/terrains"       --public-host 127.0.0.1       --cluster-mode Offline       --max-players 1       --tps 10
+elif command -v grun >/dev/null 2>&1; then
+    exec grun "$DIR/dotnet" "$DIR/DurangoServer.dll"       --name "Durango Offline"       --gateway-port 28190       --game-port 28191       --data "$DIR/data"       --terrains "$DIR/data/terrains"       --public-host 127.0.0.1       --cluster-mode Offline       --max-players 1       --tps 10
+else
+    exec "$DIR/dotnet" "$DIR/DurangoServer.dll"       --name "Durango Offline"       --gateway-port 28190       --game-port 28191       --data "$DIR/data"       --terrains "$DIR/data/terrains"       --public-host 127.0.0.1       --cluster-mode Offline       --max-players 1       --tps 10
 fi
-
-# Method 2: grun -s shell
-if command -v grun >/dev/null 2>&1; then
-    exec grun -s ""$DIR/dotnet" "$DIR/DurangoServer.dll" --name "Durango Offline" --gateway-port 28190 --game-port 28191 --data "$DIR/data" --terrains "$DIR/data/terrains" --public-host 127.0.0.1 --cluster-mode Offline --max-players 1 --tps 10"
-fi
-
-# Method 3: direct execution
-exec "$DIR/dotnet" "$DIR/DurangoServer.dll"   --name "Durango Offline"   --gateway-port 28190   --game-port 28191   --data "$DIR/data"   --terrains "$DIR/data/terrains"   --public-host 127.0.0.1   --cluster-mode Offline   --max-players 1   --tps 10
 EOF
 
 chmod +x "$HOME/durango-server/run.sh" "$HOME/durango-server/dotnet"
@@ -98,6 +99,8 @@ chmod +x "$HOME/durango-server/run.sh" "$HOME/durango-server/dotnet"
 PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
 cat << 'EOF' > "$PREFIX_DIR/bin/durango"
 #!/data/data/com.termux/files/usr/bin/bash
+unset LD_LIBRARY_PATH
+unset LD_PRELOAD
 if command -v termux-wake-lock >/dev/null 2>&1; then
     termux-wake-lock
 fi
