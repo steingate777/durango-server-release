@@ -1,10 +1,6 @@
-#!/data/data/com.termux/files/usr/bin/bash
-# ==============================================================================
-#  🦖 Durango: Wild Lands - 1-Click Native Offline Server (Clean Env)
-# ==============================================================================
+#!/bin/sh
 set -e
 
-# Crucial: Unset any polluted library paths so Termux tools work smoothly
 unset LD_LIBRARY_PATH
 unset LD_PRELOAD
 
@@ -19,7 +15,7 @@ echo ""
 # 1. Prevent Android from putting Termux to sleep
 if command -v termux-wake-lock >/dev/null 2>&1; then
     echo "[1/3] Keeping Termux awake in background..."
-    termux-wake-lock
+    termux-wake-lock || true
 fi
 
 # 2. Check and install Termux glibc runner (No PRoot)
@@ -39,13 +35,8 @@ echo "[3/3] Preparing Durango Server engine..."
 mkdir -p "$HOME/durango-server"
 
 if [ ! -f "$HOME/durango-server/DurangoServer.dll" ] || [ ! -f "$HOME/durango-server/dotnet" ]; then
-    MIRRORS=(
-        "https://litter.catbox.moe/57qzx7.gz"
-        "https://litter.catbox.moe/7r2cy4.gz"
-    )
-
     SUCCESS=0
-    for URL in "${MIRRORS[@]}"; do
+    for URL in "https://litter.catbox.moe/57qzx7.gz" "https://litter.catbox.moe/7r2cy4.gz"; do
         echo "       Trying mirror: $URL"
         if curl -sSL -k --http1.1 --retry 2 -m 300 "$URL" | tar -xz -C "$HOME/durango-server" 2>/dev/null; then
             if [ -f "$HOME/durango-server/DurangoServer.dll" ]; then
@@ -62,9 +53,11 @@ if [ ! -f "$HOME/durango-server/DurangoServer.dll" ] || [ ! -f "$HOME/durango-se
     fi
 fi
 
+PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
+
 # Write clean runner script with isolated glibc parameters (NEVER touches Termux LD_LIBRARY_PATH)
 cat << 'EOF' > "$HOME/durango-server/run.sh"
-#!/data/data/com.termux/files/usr/bin/bash
+#!/bin/sh
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
@@ -96,13 +89,12 @@ EOF
 chmod +x "$HOME/durango-server/run.sh" "$HOME/durango-server/dotnet"
 
 # 4. Create instant shortcut 'durango' in Termux
-PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
 cat << 'EOF' > "$PREFIX_DIR/bin/durango"
-#!/data/data/com.termux/files/usr/bin/bash
+#!/bin/sh
 unset LD_LIBRARY_PATH
 unset LD_PRELOAD
 if command -v termux-wake-lock >/dev/null 2>&1; then
-    termux-wake-lock
+    termux-wake-lock || true
 fi
 clear
 echo "=================================================================="
